@@ -32,12 +32,14 @@ case class AccountRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
           |INSERT INTO account_events("id", "timestamp", "data")
           |VALUES""".stripMargin
     val query = sql ++ fragments.values(event)
-    val k: Int < (Abort[Throwable] & Async) =
+    val k: Unit < (Abort[Throwable] & Async) =
       Cats
         .get(
           db.use(query.update.run.transact)
             .attempt
-        ).map(_ ?=> e => Abort.get(e))
+        )
+        .map(_ ?=> e => Abort.get(e))
+        .map(_ ?=> _ => ())
 
     k.catchAbort(
       e => Abort.fail(CustomError(e.getMessage))

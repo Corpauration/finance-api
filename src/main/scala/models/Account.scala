@@ -4,8 +4,10 @@ package accounts
 import fr.corpauration.finance.accounts.id.AccountId
 import fr.corpauration.finance.types.cents.Cents
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
 
 import java.util.UUID
+import scala.util.Try
 
 package id {
   opaque type AccountId = UUID
@@ -32,10 +34,17 @@ enum AccountStatus {
   case ACTIVE, DEACTIVATED, DELETED
 }
 
+object AccountStatus {
+  def safeValueOf(s: String): Option[AccountStatus] =
+    Try {
+      AccountStatus.valueOf(s)
+    }.toOption
+}
+
 case class AccountMetadata(
   name: String,
   description: String,
   tag: Seq[String],
   labels: Map[String, String]
-) derives Encoder.AsObject, Decoder
+) derives Encoder.AsObject, Decoder, Schema
 

@@ -1,42 +1,52 @@
 package fr.corpauration.finance
 package routes
 
-import fr.corpauration.finance.accounts.{Account, AccountMetadata, AccountStatus}
-import io.circe.{Decoder, Encoder}
+import java.util.UUID
+
+import fr.corpauration.finance.accounts.{ Account, AccountMetadata, AccountStatus }
+import io.circe.{ Decoder, Encoder }
 import sttp.model.StatusCode
 import sttp.tapir.*
 import sttp.tapir.json.circe.*
 
-import java.util.UUID
-
 object accounts {
   given Schema[AccountStatus] = Schema.derivedEnumeration.defaultStringBased
 
-  val statusQuery =
-    query[Option[AccountStatus]]("query")
+  given Codec[String, AccountStatus, CodecFormat.TextPlain] =
+    Codec.string.mapDecode(AccountStatus.safeValueOf andThen DecodeResult.fromOption)(_.toString)
+
+  given Codec[List[String], Option[AccountStatus], CodecFormat.TextPlain] =
+    Codec.listHeadOption[String, AccountStatus, CodecFormat.TextPlain]
+
+  val statusQuery: EndpointInput[AccountStatus] =
+    query[Option[AccountStatus]]("status")
       .description("Filter by account status")
       .default(None)
       .example(Some(AccountStatus.DEACTIVATED))
       .map(_.getOrElse(AccountStatus.ACTIVE))(Option.apply)
 
   case class AccountCreationPayload(
-    ownerId: String,
-    name: String,
-    description: String,
-    tag: Seq[String],
-    labels: Map[String, String],
-    maxDebtAllowed: Long,
-    balance: Long,
-  )derives Encoder.AsObject, Decoder, Schema
+      ownerId: String,
+      name: String,
+      description: String,
+      tag: Seq[String],
+      labels: Map[String, String],
+      maxDebtAllowed: Long,
+      balance: Long)
+      derives Encoder.AsObject,
+        Decoder,
+        Schema
 
   case class AccountOutput(
-    id: UUID,
-    ownerId: String,
-    metadata: AccountMetadata,
-    maxDebtAllowed: Long,
-    balance: Long,
-    status: String,
-  )derives Encoder.AsObject, Decoder, Schema
+      id: UUID,
+      ownerId: String,
+      metadata: AccountMetadata,
+      maxDebtAllowed: Long,
+      balance: Long,
+      status: String)
+      derives Encoder.AsObject,
+        Decoder,
+        Schema
 
   val createAccount =
     endpoint.post

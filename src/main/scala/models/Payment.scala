@@ -3,6 +3,7 @@ package payments
 
 import fr.corpauration.finance.accounts.id.AccountId
 import fr.corpauration.finance.payments.id.PaymentId
+import fr.corpauration.finance.types.cents.Cents
 
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -23,7 +24,7 @@ case class Payment(
   id: PaymentId,
   author: String,
   metadata: PaymentMetadata,
-  amount: Long,
+  amount: Cents,
   method: PaymentMethod,
   status: PaymentStatus,
 )
