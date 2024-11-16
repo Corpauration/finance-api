@@ -1,12 +1,13 @@
 package fr.corpauration.finance
 package accounts.persistence
 
-import accounts.models.*
-import doobie.postgres.implicits.*
-import doobie.{Meta, Read, Write}
-import io.circe.Json
-
 import java.util.UUID
+
+import accounts.models.*
+import common.types.cents.Cents
+import doobie.{ Meta, Read, Write }
+import doobie.postgres.implicits.*
+import io.circe.Json
 
 case class AccountEntity(
     id: UUID,
@@ -14,13 +15,28 @@ case class AccountEntity(
     name: String,
     description: String,
     tags: List[String],
-    labels: Json,
+    labels: Map[String, String],
     maxDebtAllowed: Long,
     balance: Long,
-    status: AccountStatus)
+    status: AccountStatus) {
+
+  def account: Account = Account(
+    id = AccountId(id),
+    ownerId = ownerId,
+    metadata = AccountMetadata(
+      name = name,
+      description = description,
+      tag = tags,
+      labels = labels
+    ),
+    maxDebtAllowed = Cents(maxDebtAllowed),
+    balance = Cents(balance),
+    status = status
+  )
+}
 
 object AccountEntity {
-  given Meta[AccountStatus] = pgEnumString[AccountStatus]("status", AccountStatus.valueOf, _.toString)
+  given Meta[AccountStatus] = pgEnumString[AccountStatus]("account_status_type", AccountStatus.valueOf, _.toString)
 
   def apply(account: Account): AccountEntity = {
     AccountEntity(
@@ -29,9 +45,7 @@ object AccountEntity {
       name = account.metadata.name,
       description = account.metadata.description,
       tags = account.metadata.tag.toList,
-      labels = Json.fromFields(
-        account.metadata.labels.map { case (key, value) => key -> Json.fromString(value) }
-      ),
+      labels = account.metadata.labels,
       maxDebtAllowed = account.maxDebtAllowed.value,
       balance = account.balance.value,
       status = account.status
