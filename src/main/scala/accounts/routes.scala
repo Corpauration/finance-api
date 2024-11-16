@@ -1,15 +1,17 @@
 package fr.corpauration.finance
-package routes
+package accounts
 
 import java.util.UUID
 
-import fr.corpauration.finance.accounts.{ Account, AccountMetadata, AccountStatus }
+import accounts.models.*
+import accounts.models.AccountId.uuid
+import common.types.cents.value
 import io.circe.{ Decoder, Encoder }
 import sttp.model.StatusCode
 import sttp.tapir.*
 import sttp.tapir.json.circe.*
 
-object accounts {
+object routes {
   given Schema[AccountStatus] = Schema.derivedEnumeration.defaultStringBased
 
   given Codec[String, AccountStatus, CodecFormat.TextPlain] =
@@ -18,7 +20,7 @@ object accounts {
   given Codec[List[String], Option[AccountStatus], CodecFormat.TextPlain] =
     Codec.listHeadOption[String, AccountStatus, CodecFormat.TextPlain]
 
-  val statusQuery: EndpointInput[AccountStatus] =
+  private val statusQuery: EndpointInput[AccountStatus] =
     query[Option[AccountStatus]]("status")
       .description("Filter by account status")
       .default(None)
@@ -48,7 +50,22 @@ object accounts {
         Decoder,
         Schema
 
-  val createAccount =
+  object AccountOutput {
+
+    def apply(account: Account): AccountOutput =
+      AccountOutput(
+        id = account.id.uuid,
+        ownerId = account.ownerId,
+        metadata = account.metadata,
+        maxDebtAllowed = account.maxDebtAllowed.value,
+        balance = account.balance.value,
+        status = account.status.toString
+      )
+  }
+
+  case class HttpError(status: StatusCode, message: String)
+
+  val createAccount: Endpoint[Unit, AccountCreationPayload, HttpError, AccountOutput, Any] =
     endpoint.post
       .name("createAccount")
       .description("Create an account")
@@ -57,25 +74,27 @@ object accounts {
       .in(jsonBody[AccountCreationPayload])
       .out(jsonBody[AccountOutput] and statusCode(StatusCode.Created))
       .errorOut(statusCode and stringBody)
+      .mapErrorOutTo[HttpError]
 
-  val getAccounts =
+  val listAccounts: Endpoint[Unit, AccountStatus, HttpError, List[AccountOutput], Any] =
     endpoint.get
-      .name("getAccounts")
+      .name("listAccounts")
       .description("Retrieves all accounts")
       .tags(List("finance", "account", "v1.0"))
       .in("v1.0" / "finance" / "accounts")
       .in(statusQuery)
       .out(jsonBody[List[AccountOutput]] and statusCode(StatusCode.Ok))
       .errorOut(statusCode and stringBody)
+      .mapErrorOutTo[HttpError]
 
-  val getAccount =
+  val getAccount: Endpoint[Unit, UUID, HttpError, AccountOutput, Any] =
     endpoint.get
       .name("getAccount")
       .description("Retrieves an accounts by id")
       .tags(List("finance", "account", "v1.0"))
       .in("v1.0" / "finance" / "accounts" / path[UUID]("accountId"))
-      .in(statusQuery)
       .out(jsonBody[AccountOutput] and statusCode(StatusCode.Ok))
       .errorOut(statusCode and stringBody)
+      .mapErrorOutTo[HttpError]
 
 }

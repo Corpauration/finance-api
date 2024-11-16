@@ -1,7 +1,7 @@
 package fr.corpauration.finance
-package events
+package payments.models
 
-import payments.{PaymentMetadata, PaymentMethod}
+import payments.models.*
 
 import java.time.OffsetDateTime
 import java.util.UUID

@@ -1,5 +1,5 @@
 package fr.corpauration.finance
-package types
+package common.types
 
 import io.circe.{Decoder, Encoder}
 
