@@ -18,7 +18,7 @@ case class AccountQueryRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
     val query =
       sql"""
         SELECT a.id, a.owner_id, a.name, a.description, a.tags, a.labels, a.max_debt_allowed, a.balance, a.status
-        FROM account a
+        FROM accounts a
         WHERE a.id = ${id.uuid}
          """.query[AccountEntity].option
 

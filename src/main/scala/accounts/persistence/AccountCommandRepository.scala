@@ -3,44 +3,75 @@ package accounts.persistence
 
 import java.time.OffsetDateTime
 
-import accounts.models.{ Account, AccountError, AccountEvent, AccountId, AccountMetadata }
+import accounts.models.*
 import accounts.models.AccountError.{ AccountNotFound, CustomError }
 import accounts.models.AccountEvent.*
 import accounts.models.AccountId.uuid
-import accounts.persistence.AccountEntity
 import accounts.persistence.AccountEventEntity.{ accountEvent, event }
 import cats.effect.IO as CatsIO
 import cats.effect.kernel.Resource
-import cats.implicits.catsStdInstancesForList
 import common.Event
 import common.types.cents.Cents
-import common.utils.helper.mapError
-import doobie.Transactor
+import common.utils.helper.{ asKyo, mapError }
+import doobie.{ ConnectionIO, Transactor }
 import doobie.implicits.*
-import doobie.postgres.implicits.UuidType
+import doobie.postgres.implicits.*
 import doobie.util.fragments
 import kyo.*
 
 case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
 
-  private def insertEvent(
-      accountEvent: AccountEvent
-    ): Unit < (Abort[AccountError] & Async) = {
+  private def insertEventCIO(accountEvent: AccountEvent): ConnectionIO[Unit] = {
     val event: Event = accountEvent.event
     val sql =
-      fr"""
+      sql"""
           |INSERT INTO account_events("id", "timestamp", "data")
           |VALUES""".stripMargin
     val query = sql ++ fragments.values(event)
-    val k: Unit < (Abort[Throwable] & Async) =
-      Cats
-        .get(
-          db.use(query.update.run.transact).attempt
-        )
-        .map(_ ?=> e => Abort.get(e))
-        .map(_ ?=> _ => ())
+    query.update.run.map(_ => ())
+  }
 
-    k.catchAbort(e => Abort.fail(CustomError(e.getMessage)))
+  private def insertAccountCIO(account: Account): ConnectionIO[Unit] = {
+    val sql =
+      sql"""
+          |INSERT INTO accounts(id, owner_id, name, description, tags, labels, max_debt_allowed, balance, status)
+          |VALUES
+          |""".stripMargin
+
+    val query = sql ++ fragments.values(AccountEntity(account))
+    query.update.run.map(_ => ())
+  }
+
+  private def updateAccountCIO(account: Account): ConnectionIO[Unit] = {
+    val entity = AccountEntity(account)
+    import entity.*
+    val query = fr"""UPDATE accounts""" ++
+      fragments.set(
+        fr"id = $id",
+        fr"owner_id = $ownerId",
+        fr"name = $name",
+        fr"description = $description",
+        fr"tags = $tags",
+        fr"labels = $labels",
+        fr"max_debt_allowed = $maxDebtAllowed",
+        fr"balance = $balance",
+        fr"status = $status"
+      ) ++ fr"WHERE id = $id"
+    query.update.run.map(_ => ())
+  }
+
+  private def insertEvent(event: AccountEvent)(account: Account): Unit < (Abort[AccountError] & Async) = {
+    val insertOrUpdate = {
+      if event.isInstanceOf[AccountCreatedEvent] then insertAccountCIO(account)
+      else updateAccountCIO(account)
+    }
+
+    val query = for {
+      _ <- insertEventCIO(event)
+      _ <- insertOrUpdate
+    } yield ()
+
+    db.use(query.transact).attempt.asKyo.mapError(e => CustomError(e.getMessage))
   }
 
   def createAccount(
@@ -55,11 +86,12 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         balance = account.balance,
         timestamp = OffsetDateTime.now()
       )
-    )
+    )(account)
 
   def updateMetadata(
       id: AccountId,
       metadata: AccountMetadata
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       MetadataUpdatedEvent(
@@ -67,8 +99,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         metadata = metadata,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def updateMaximumDebtAllowed(
@@ -76,6 +107,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       maxDebtAllowed: Cents,
       reason: String,
       labels: Map[String, String]
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       MaxDebtAllowedUpdated(
@@ -85,8 +117,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         labels = labels,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def increaseBalance(
@@ -94,6 +125,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       amount: Cents,
       reason: String,
       labels: Map[String, String]
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       BalanceIncreased(
@@ -103,8 +135,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         labels = labels,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def decreaseBalance(
@@ -112,6 +143,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       amount: Cents,
       reason: String,
       labels: Map[String, String]
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       BalanceDecreased(
@@ -121,14 +153,14 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         labels = labels,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def deactivateAccount(
       id: AccountId,
       reason: String,
       labels: Map[String, String]
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       AccountDeactivated(
@@ -137,14 +169,14 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         labels = labels,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def reactivateAccount(
       id: AccountId,
       reason: String,
       labels: Map[String, String]
+    )(account: Account
     ): Account < (Abort[AccountError] & Async) = for {
     _ <- insertEvent(
       AccountReactivated(
@@ -153,8 +185,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         labels = labels,
         timestamp = OffsetDateTime.now()
       )
-    )
-    account <- rebuildAccount(id)
+    )(account)
   } yield account
 
   def rebuildAccount(

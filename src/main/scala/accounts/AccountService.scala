@@ -4,7 +4,6 @@ package accounts
 import accounts.models.*
 import accounts.persistence.AccountCommandRepository
 import accounts.query.AccountQueryRepository
-
 import kyo.*
 
 case class AccountService(command: AccountCommandRepository, query: AccountQueryRepository) {
@@ -16,5 +15,10 @@ case class AccountService(command: AccountCommandRepository, query: AccountQuery
 object AccountService {
 
   val live: Layer[AccountService, Env[AccountCommandRepository] & Env[AccountQueryRepository]] =
-    Layer.from(AccountService.apply)
+    Layer {
+      for {
+        command <- Env.get[AccountCommandRepository]
+        query <- Env.get[AccountQueryRepository]
+      } yield AccountService(command, query)
+    }
 }

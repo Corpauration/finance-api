@@ -18,7 +18,7 @@ case class AccountEntity(
     labels: Map[String, String],
     maxDebtAllowed: Long,
     balance: Long,
-    status: AccountStatus) {
+    status: AccountStatus) derives Read, Write {
 
   def account: Account = Account(
     id = AccountId(id),
@@ -36,8 +36,6 @@ case class AccountEntity(
 }
 
 object AccountEntity {
-  given Meta[AccountStatus] = pgEnumString[AccountStatus]("account_status_type", AccountStatus.valueOf, _.toString)
-
   def apply(account: Account): AccountEntity = {
     AccountEntity(
       id = account.id.uuid,
