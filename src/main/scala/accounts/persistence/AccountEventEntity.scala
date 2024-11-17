@@ -2,6 +2,7 @@ package fr.corpauration.finance
 package accounts.persistence
 
 import java.time.OffsetDateTime
+import java.util.UUID
 
 import accounts.models.*
 import common.Event
@@ -69,7 +70,7 @@ object AccountEventEntity {
   extension (event: Event) {
 
     def accountEvent: Either[DecodingFailure, AccountEvent] = {
-      val Event(uuid, timestamp, data) = event
+      val Event(_, uuid, timestamp, data) = event
       val accountId = AccountId(uuid)
       event.data.toJson.as[AccountEventEntity].map {
         case AccountEventEntity.AccountCreatedEvent(ownerId, metadata, maxDebtAllowed, balance) =>
@@ -140,8 +141,9 @@ object AccountEventEntity {
     def event: Event = {
       import AccountEventEntity.given
       val entity = AccountEventEntity(accountEvent)
-      new Event(
-        id = accountEvent.id.uuid,
+      Event(
+        id = UUID.randomUUID(),
+        streamId = accountEvent.id.uuid,
         timestamp = accountEvent.timestamp,
         data = entity.asJsonObject
       )

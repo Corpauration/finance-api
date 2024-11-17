@@ -3,11 +3,9 @@ package accounts.models
 
 import java.util.UUID
 import scala.util.Try
-import common.types.cents.Cents
 
-import doobie.Meta
-import doobie.postgres.implicits.pgEnumStringOpt
-import io.circe.{Decoder, Encoder}
+import common.types.cents.Cents
+import io.circe.{ Decoder, Encoder }
 import sttp.tapir.Schema
 
 case class Account(
@@ -23,9 +21,7 @@ enum AccountStatus {
 }
 
 object AccountStatus {
-  given Meta[AccountStatus] =
-    pgEnumStringOpt[AccountStatus]("account_status_type", AccountStatus.safeValueOf, _.toString)
-  
+
   def safeValueOf(s: String): Option[AccountStatus] =
     Try {
       AccountStatus.valueOf(s)

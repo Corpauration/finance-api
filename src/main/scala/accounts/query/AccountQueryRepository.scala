@@ -4,34 +4,33 @@ package accounts.query
 import accounts.models.*
 import accounts.models.AccountError.{ AccountNotFound, CustomError }
 import accounts.persistence.AccountEntity
-import cats.effect.IO as CatsIO
-import cats.effect.kernel.Resource
-import common.utils.helper.mapError
-import doobie.Transactor
-import doobie.implicits.*
-import doobie.postgres.implicits.*
-import kyo.*
+import io.getquill.*
+import javax.sql.DataSource
+import zio.*
 
-case class AccountQueryRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
+case class AccountQueryRepository(dataSource: DataSource) {
+  private val context = PostgresZioJdbcContext(SnakeCase)
+  import context.run
 
-  def findOneById(id: AccountId): AccountEntity < (Abort[AccountError] & Async) = {
-    val query =
-      sql"""
-        SELECT a.id, a.owner_id, a.name, a.description, a.tags, a.labels, a.max_debt_allowed, a.balance, a.status
-        FROM accounts a
-        WHERE a.id = ${id.uuid}
-         """.query[AccountEntity].option
-
-    val ioEither: CatsIO[Either[Throwable, Maybe[AccountEntity]]] =
-      db.use(query.transact).map(Maybe.fromOption).attempt
-
-    Cats
-      .get(ioEither)
-      .map(_ ?=>
-        _.fold(
-          error => Abort.fail[AccountError](CustomError(error.getMessage)),
-          opt => Abort.get(opt).mapError[AccountError](_ => AccountNotFound(id))
-        )
-      )
+  private val accounts = quote {
+    querySchema[AccountEntity]("accounts")
   }
+
+  def findOneById(id: AccountId): ZIO[Any, AccountError, AccountEntity] = {
+    run(quote { accounts.filter(_.id == id.uuid) })
+      .provideEnvironment(ZEnvironment(dataSource))
+      .mapError { e => CustomError(e.getMessage) }
+      .flatMap { entities => ZIO.getOrFailWith(AccountNotFound(id))(entities.headOption) }
+  }
+
+  def findAllByStatus(status: AccountStatus): ZIO[Any, AccountError, Seq[AccountEntity]] = {
+    run(quote { accounts.filter(_.status == status) })
+      .provideEnvironment(ZEnvironment(dataSource))
+      .mapError(e => CustomError(e.getMessage))
+  }
+}
+
+object AccountQueryRepository {
+
+  val live: ZLayer[DataSource, Nothing, AccountQueryRepository] = ZLayer.fromFunction(ds => AccountQueryRepository(ds))
 }

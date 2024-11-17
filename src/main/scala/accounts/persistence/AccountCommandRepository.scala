@@ -8,75 +8,49 @@ import accounts.models.AccountError.{ AccountNotFound, CustomError }
 import accounts.models.AccountEvent.*
 import accounts.models.AccountId.uuid
 import accounts.persistence.AccountEventEntity.{ accountEvent, event }
-import cats.effect.IO as CatsIO
-import cats.effect.kernel.Resource
 import common.Event
 import common.types.cents.Cents
-import common.utils.helper.{ asKyo, mapError }
-import doobie.{ ConnectionIO, Transactor }
-import doobie.implicits.*
-import doobie.postgres.implicits.*
-import doobie.util.fragments
-import kyo.*
+import io.getquill.*
+import javax.sql.DataSource
+import zio.*
 
-case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
+case class AccountCommandRepository(datasource: DataSource) {
+  private val context = PostgresZioJdbcContext(SnakeCase)
+  import context.{ insertValue, run, transaction, updateValue }
 
-  private def insertEventCIO(accountEvent: AccountEvent): ConnectionIO[Unit] = {
-    val event: Event = accountEvent.event
-    val sql =
-      sql"""
-          |INSERT INTO account_events("id", "timestamp", "data")
-          |VALUES""".stripMargin
-    val query = sql ++ fragments.values(event)
-    query.update.run.map(_ => ())
+  private val account_events = quote {
+    querySchema[Event]("account_events", _.id -> "id", _.timestamp -> "timestamp", _.data -> "data")
   }
 
-  private def insertAccountCIO(account: Account): ConnectionIO[Unit] = {
-    val sql =
-      sql"""
-          |INSERT INTO accounts(id, owner_id, name, description, tags, labels, max_debt_allowed, balance, status)
-          |VALUES
-          |""".stripMargin
+  def transact[A](zio: ZIO[DataSource, Throwable, AccountEntity]): ZIO[Any, AccountError, Account] =
+    transaction(zio)
+      .map(_.account)
+      .mapError { throwable => CustomError(throwable.getMessage) }
+      .provideEnvironment(ZEnvironment(datasource))
 
-    val query = sql ++ fragments.values(AccountEntity(account))
-    query.update.run.map(_ => ())
-  }
+  def insertEvent(
+      accountEvent: AccountEvent
+    )(account: Account
+    ): ZIO[Any, AccountError, Account] = {
+    val event = accountEvent.event
+    val upsertQuery =
+      if event.isInstanceOf[AccountCreatedEvent] then quote {
+        query[AccountEntity].insertValue(AccountEntity(account)).returning(identity)
+      }
+      else
+        quote {
+          query[AccountEntity].updateValue(AccountEntity(account)).returning(identity)
+        }
+    val eventQuery = quote(account_events.insertValue(event))
 
-  private def updateAccountCIO(account: Account): ConnectionIO[Unit] = {
-    val entity = AccountEntity(account)
-    import entity.*
-    val query = fr"""UPDATE accounts""" ++
-      fragments.set(
-        fr"id = $id",
-        fr"owner_id = $ownerId",
-        fr"name = $name",
-        fr"description = $description",
-        fr"tags = $tags",
-        fr"labels = $labels",
-        fr"max_debt_allowed = $maxDebtAllowed",
-        fr"balance = $balance",
-        fr"status = $status"
-      ) ++ fr"WHERE id = $id"
-    query.update.run.map(_ => ())
-  }
-
-  private def insertEvent(event: AccountEvent)(account: Account): Unit < (Abort[AccountError] & Async) = {
-    val insertOrUpdate = {
-      if event.isInstanceOf[AccountCreatedEvent] then insertAccountCIO(account)
-      else updateAccountCIO(account)
-    }
-
-    val query = for {
-      _ <- insertEventCIO(event)
-      _ <- insertOrUpdate
-    } yield ()
-
-    db.use(query.transact).attempt.asKyo.mapError(e => CustomError(e.getMessage))
+    transaction {
+      run(eventQuery) *> run(upsertQuery)
+    }.map(_.account).mapError(throwable => CustomError(throwable.getMessage))
   }
 
   def createAccount(
       account: Account
-    ): Unit < (Abort[AccountError] & Async) =
+    ): ZIO[Any, AccountError, Unit] =
     insertEvent(
       AccountCreatedEvent(
         id = account.id,
@@ -92,15 +66,15 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       id: AccountId,
       metadata: AccountMetadata
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       MetadataUpdatedEvent(
         id = id,
         metadata = metadata,
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
   def updateMaximumDebtAllowed(
       id: AccountId,
@@ -108,8 +82,8 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       reason: String,
       labels: Map[String, String]
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       MaxDebtAllowedUpdated(
         id = id,
         maxDebtAllowed = maxDebtAllowed,
@@ -118,7 +92,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
   def increaseBalance(
       id: AccountId,
@@ -126,8 +100,8 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       reason: String,
       labels: Map[String, String]
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       BalanceIncreased(
         id = id,
         amount = amount,
@@ -136,7 +110,7 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
   def decreaseBalance(
       id: AccountId,
@@ -144,8 +118,8 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
       reason: String,
       labels: Map[String, String]
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       BalanceDecreased(
         id = id,
         amount = amount,
@@ -154,15 +128,15 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
   def deactivateAccount(
       id: AccountId,
       reason: String,
       labels: Map[String, String]
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       AccountDeactivated(
         id = id,
         reason = reason,
@@ -170,15 +144,15 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
   def reactivateAccount(
       id: AccountId,
       reason: String,
       labels: Map[String, String]
     )(account: Account
-    ): Account < (Abort[AccountError] & Async) = for {
-    _ <- insertEvent(
+    ): ZIO[Any, AccountError, Account] = for {
+    a <- insertEvent(
       AccountReactivated(
         id = id,
         reason = reason,
@@ -186,31 +160,25 @@ case class AccountCommandRepository(db: Resource[CatsIO, Transactor[CatsIO]]) {
         timestamp = OffsetDateTime.now()
       )
     )(account)
-  } yield account
+  } yield a
 
-  def rebuildAccount(
-      id: AccountId
-    ): Account < (Abort[AccountError] & Async) = {
-    val eventStream = sql"""
-                           |SELECT e.id, e.data, e.timestamp
-                           |FROM account_events
-                           |WHERE e.id = ${id.uuid}
-                           |ORDER BY e.timestamp ASC
-                           |""".stripMargin.query[Event].stream
+  def rebuildAccount(id: AccountId): ZIO[Any, AccountError, Account] = {
+    val q = quote {
+      account_events.filter(_.streamId == id.uuid).sortBy(_.timestamp)
+    }
 
-    val ioEither = db.use(
-      eventStream
-        .transact[CatsIO](_)
-        .evalMap { event =>
-          event.accountEvent match {
-            case Left(value)  => CatsIO.raiseError(value)
-            case Right(value) => CatsIO.pure(value)
-          }
-        }
-        .compile
-        .fold(Left(AccountNotFound(id)).withRight[Account])(AccountEvent.applyEvent)
-    )
-
-    Cats.get(ioEither).map { either => Abort.get(either) }
+    context
+      .stream(q)
+      .provideEnvironment(ZEnvironment(datasource))
+      .mapZIO(event => ZIO.fromEither(event.accountEvent))
+      .runFoldZIO(Left(AccountNotFound(id)).withRight[Account])(AccountEvent.applyEvent)
+      .mapError(e => CustomError(e.getMessage))
+      .flatMap(ZIO.fromEither)
   }
+}
+
+object AccountCommandRepository {
+
+  val live: ZLayer[Datasource, Nothing, AccountCommandRepository] =
+    ZLayer.fromFunction { dataSource => AccountCommandRepository(dataSource) }
 }

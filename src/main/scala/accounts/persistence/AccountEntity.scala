@@ -1,13 +1,12 @@
 package fr.corpauration.finance
 package accounts.persistence
 
-import java.util.UUID
-
 import accounts.models.*
 import common.types.cents.Cents
-import doobie.{ Meta, Read, Write }
-import doobie.postgres.implicits.*
+
 import io.circe.Json
+
+import java.util.UUID
 
 case class AccountEntity(
     id: UUID,
@@ -18,7 +17,7 @@ case class AccountEntity(
     labels: Map[String, String],
     maxDebtAllowed: Long,
     balance: Long,
-    status: AccountStatus) derives Read, Write {
+    status: AccountStatus) {
 
   def account: Account = Account(
     id = AccountId(id),

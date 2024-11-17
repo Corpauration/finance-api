@@ -11,21 +11,10 @@ lazy val root = (project in file("."))
     libraryDependencies ++= Seq(
       "com.softwaremill.sttp.tapir" %% "tapir-core" % "1.11.8",
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % "1.11.8",
+      "com.softwaremill.sttp.tapir" %% "tapir-netty-server-zio" % "1.11.9",
       "io.circe" %% "circe-core" % "0.14.9",
       "io.circe" %% "circe-parser" % "0.14.9",
-      "org.tpolecat" %% "doobie-core" % "1.0.0-RC5",
-      "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC5",
-      "io.getkyo" %% "kyo-prelude" % kyoVersion,
-      "io.getkyo" %% "kyo-core" % kyoVersion,
-      "io.getkyo" %% "kyo-direct" % kyoVersion,
-      "io.getkyo" %% "kyo-combinators" % kyoVersion,
-      "io.getkyo" %% "kyo-sttp" % kyoVersion,
-      "io.getkyo" %% "kyo-tapir" % kyoVersion,
-      "io.getkyo" %% "kyo-cats" % kyoVersion
-
+      "dev.zio" %% "zio" % "2.1.12",
+      "io.getquill" %% "quill-jdbc-zio" % "4.8.4",
     ),
-    scalacOptions ++= Seq(
-      "-Wvalue-discard",
-      "-Wnonunit-statement",
-      "-Wconf:msg=(discarded.*value|pure.*statement):error")
   )

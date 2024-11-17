@@ -2,7 +2,6 @@ package fr.corpauration.finance
 package accounts.models
 
 import accounts.models.AccountId
-
 import sttp.model.StatusCode
 
 enum AccountError {

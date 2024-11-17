@@ -2,13 +2,13 @@ package fr.corpauration.finance
 package accounts.models
 
 import java.time.OffsetDateTime
-import AccountError.AccountAlreadyCreated
-import accounts.persistence.*
-import accounts.models.*
-import accounts.models.AccountStatus.*
-import common.types.cents.Cents
 
+import accounts.models.*
+import accounts.models.AccountError.AccountAlreadyCreated
+import accounts.models.AccountStatus.*
+import accounts.persistence.*
 import common.Event
+import common.types.cents.Cents
 
 trait BaseAccountEvent {
   val id: AccountId
@@ -16,6 +16,7 @@ trait BaseAccountEvent {
 }
 
 enum AccountEvent extends BaseAccountEvent {
+
   case AccountCreatedEvent(
       id: AccountId,
       ownerId: String,
@@ -122,19 +123,21 @@ object AccountEvent {
   private def onBalanceDecreased(
       account: Either[AccountError, Account]
     )(balance: Cents
-    ): Either[AccountError, Account] = account.map { acc =>
-    acc.copy(
-      balance = Cents(acc.balance.value - balance.value)
-    )
+    ): Either[AccountError, Account] = account.map {
+    acc =>
+      acc.copy(
+        balance = Cents(acc.balance.value - balance.value)
+      )
   }
 
   private def onBalanceIncreased(
       account: Either[AccountError, Account]
     )(balance: Cents
-    ): Either[AccountError, Account] = account.map { acc =>
-    acc.copy(
-      balance = Cents(acc.balance.value + balance.value)
-    )
+    ): Either[AccountError, Account] = account.map {
+    acc =>
+      acc.copy(
+        balance = Cents(acc.balance.value + balance.value)
+      )
   }
 
   private def onAccountDeactivated(account: Either[AccountError, Account]): Either[AccountError, Account] =
@@ -142,5 +145,5 @@ object AccountEvent {
 
   private def onAccountReactivated(account: Either[AccountError, Account]): Either[AccountError, Account] =
     account.map(_.copy(status = ACTIVE))
-  
+
 }

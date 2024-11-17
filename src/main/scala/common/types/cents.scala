@@ -1,7 +1,7 @@
 package fr.corpauration.finance
 package common.types
 
-import io.circe.{Decoder, Encoder}
+import io.circe.{ Decoder, Encoder }
 
 object cents {
   opaque type Cents = Long
