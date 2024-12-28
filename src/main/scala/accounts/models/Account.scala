@@ -1,12 +1,14 @@
 package fr.corpauration.finance
 package accounts.models
 
+import accounts.models.id.AccountId
+import common.types.cents.Cents
+
+import io.circe.{Decoder, Encoder}
+import sttp.tapir.Schema
+
 import java.util.UUID
 import scala.util.Try
-
-import common.types.cents.Cents
-import io.circe.{ Decoder, Encoder }
-import sttp.tapir.Schema
 
 case class Account(
     id: AccountId,
@@ -37,12 +39,14 @@ case class AccountMetadata(
       Decoder,
       Schema
 
-opaque type AccountId = UUID
+package id {
+  opaque type AccountId = UUID
 
-object AccountId {
-  def apply(uuid: UUID): AccountId = uuid
+  object AccountId {
+    def apply(uuid: UUID): AccountId = uuid
 
-  extension (accountId: AccountId) {
-    def uuid: UUID = accountId
+    extension (accountId: AccountId) {
+      def uuid: UUID = accountId
+    }
   }
 }

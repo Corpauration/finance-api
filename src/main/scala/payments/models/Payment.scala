@@ -1,12 +1,11 @@
 package fr.corpauration.finance
 package payments.models
 
-import java.time.OffsetDateTime
-import java.util.UUID
-
-import accounts.models.AccountId
+import accounts.models.id.AccountId
 import common.types.cents.Cents
-import payments.models.*
+import payments.models.id.PaymentId
+
+import java.util.UUID
 
 case class Payment(
     id: PaymentId,
@@ -32,12 +31,14 @@ enum PaymentStatus {
   case PENDING_VALIDATION, CANCELLED, PAID
 }
 
-opaque type PaymentId = UUID
+package id {
+  opaque type PaymentId = UUID
 
-object PaymentId {
-  def apply(uuid: UUID): PaymentId = uuid
+  object PaymentId {
+    def apply(uuid: UUID): PaymentId = uuid
 
-  extension (id: PaymentId) {
-    def uuid: UUID = id
+    extension (id: PaymentId) {
+      def uuid: UUID = id
+    }
   }
 }

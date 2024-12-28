@@ -4,7 +4,7 @@ package accounts
 import java.util.UUID
 
 import accounts.models.*
-import accounts.models.AccountId.uuid
+import accounts.models.id.AccountId.uuid
 import common.types.cents.value
 import io.circe.{ Decoder, Encoder }
 import sttp.model.StatusCode
